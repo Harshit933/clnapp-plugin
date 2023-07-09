@@ -1,68 +1,30 @@
-use std::{process::{Command, Output}};
-use serde_json::{Value};
+use serde_json::{Value, json};
+use clightningrpc::LightningRPC;
+
 
 impl LnLambdaInputs {
-    pub fn get_settings()  -> LnLambdaInputs {
-        let getinfo_output : NodeInfo = NodeInfo::getinfo();
-        let getrune_output : Rune = Rune::getrune();
+    pub fn get_settings(ln_rpc : &LightningRPC)  -> LnLambdaInputs {
+        let getinfo_output : NodeInfo = NodeInfo::getinfo(&ln_rpc);
+        let getrune_output : Rune = Rune::getrune(&ln_rpc);
         LnLambdaInputs{node_info : getinfo_output, rune : getrune_output}
     }
 }
 
 impl NodeInfo {
-    pub fn getinfo() -> NodeInfo {
-        let getinfo_output = Command::new("lightning-cli")
-            .arg("getinfo")
-            .arg("--testnet")
-            .output()
-            .expect("Failed to execute command");
-        let temp : NodeInfo;
-        if getinfo_output.status.success() {
-                temp = decoder(&getinfo_output);
-        } else {
-            panic!("{}", String::from_utf8_lossy(&getinfo_output.stderr));    
-        }
-        temp
+    pub fn getinfo(ln_rpc : &LightningRPC) -> NodeInfo {
+        let getinfo_output = ln_rpc.getinfo().unwrap();
+        let json_data : Value = serde_json::from_str(&serde_json::to_string(&getinfo_output.binding[0]).unwrap()).expect("Failed to parse json");
+        let host = format!("{}:{}", json_data["address"], json_data["port"]).replace("\"", "");
+        NodeInfo { node_id : getinfo_output.id, host: host }
     }
 }
 impl Rune {
-    pub fn getrune() -> Rune {
-        let getrune_output = Command::new("lightning-cli")
-            .arg("commando-rune")
-            .arg("--testnet")
-            .output()
-            .expect("Failed to execute command");
-    
-        let mut rune : String = String::new();
-    
-        if getrune_output.status.success() {
-            let stdout: std::borrow::Cow<'_, str> = String::from_utf8_lossy(&getrune_output.stdout);
-            let json_data: Value = serde_json::from_str(&stdout).expect("Failed to parse JSON");
-            rune = json_data["rune"].to_string().replace("\"", "");
-        } else {
-                let stderr = String::from_utf8_lossy(&getrune_output.stderr);
-                println!("Command failed");
-                println!("Error:\n{}", stderr);
-            }
-        Rune {rune}
+    pub fn getrune(ln_rpc : &LightningRPC) -> Rune{
+        let getrune_output = ln_rpc.call::<serde_json::Value, serde_json::Value>("commando-rune",  json!({})).unwrap();
+        let json_data : Value = serde_json::from_str(&serde_json::to_string(&getrune_output).unwrap()).expect("Failed to parse json");
+        let rune = json_data["rune"].to_string().replace("\"", "");
+        Rune{rune}
     }
-}
-
-    
-fn decoder(output : &Output) -> NodeInfo {
-    let stdout: std::borrow::Cow<'_, str> = String::from_utf8_lossy(&output.stdout);
-    let json_data: Value = serde_json::from_str(&stdout).expect("Failed to parse JSON");
-    let mut port : String = String::new();
-    let mut address : String = String::new();
-    let node_id = json_data["id"].to_string().replace("\"", "");
-    if let Some(array) = &json_data["binding"].as_array() {
-        if let Some(first_element) = array.get(0) {
-            address = first_element["address"].to_string().replace("\"", "");
-            port = first_element["port"].to_string();
-        }
-    }
-    let host = format!("{}:{}", address, port);
-    NodeInfo { node_id, host: host.to_string() }
 }
 
 pub struct NodeInfo {

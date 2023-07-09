@@ -1,7 +1,15 @@
 mod test;
+use clightningrpc::LightningRPC;
+use std::{env, path::PathBuf};
+
+use crate::test::LnLambdaInputs;
 fn main() {
-  let answer : test::LnLambdaInputs = test::LnLambdaInputs::get_settings();
-  let query_string = LnLambda{node_id : answer.node_info.node_id, host : answer.node_info.host, rune : answer.rune.rune, server : "lnlambda.lnmetrics.info/".to_string()};
+  #[allow(deprecated)]
+  let pub_sock : &PathBuf = &env::home_dir().unwrap().join(".lightning/testnet/lightning-rpc");
+  println!("Using socket {}", pub_sock.display());
+  let client = LightningRPC::new(&pub_sock);
+  let params : LnLambdaInputs = LnLambdaInputs::get_settings(&client);
+  let query_string = LnLambda{node_id : params.node_info.node_id, host : params.node_info.host, rune : params.rune.rune, server : "lnlambda.lnmetrics.info/".to_string()};
   get_query_link(query_string);
 }
 
